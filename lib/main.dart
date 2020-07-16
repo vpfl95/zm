@@ -38,11 +38,13 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   BluetoothDevice _connectedDevice;
+  BluetoothDevice latestDevice;
+  BluetoothDeviceState deviceState;
   List<BluetoothService> _services;
   final _writeController = TextEditingController();
   List<dynamic> notifyValue = new List<dynamic>();
-
-
+  int notifylength = 0;
+  var isSelected2 = [false, true];
 
   Timer refreshTimer;
 
@@ -56,7 +58,6 @@ class _MyHomePageState extends State<MyHomePage> {
   offRefreshTimer(){
     refreshTimer.cancel();
   }
-
 
 
   //디바이스 리스트에 추가
@@ -83,6 +84,7 @@ class _MyHomePageState extends State<MyHomePage> {
       for(ScanResult result in results){
         _addDeviceTolist(result.device);
         print('${result.device.name} found! rssi: ${result.rssi}');
+        print('${result.device.state}');
       }
     });
     widget.flutterBlue.startScan();
@@ -104,7 +106,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   Text(device.id.toString()),
                   ],
                 ),
-              ),FlatButton(
+              ),
+              FlatButton(
                 color: Colors.blue,
                 child: Text(
                   'Connect',
@@ -113,7 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: () async {
                   widget.flutterBlue.stopScan();
                   try {
-                    await device.connect();
+                    await device.connect(autoConnect: false);
                   } catch (e) {
                     if (e.code != 'already_connected') {
                       throw e;
@@ -123,6 +126,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   }
                   setState(() {
                     _connectedDevice = device;
+                    latestDevice = device;
                   });
                 },
               )
@@ -223,15 +227,21 @@ class _MyHomePageState extends State<MyHomePage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: RaisedButton(
-              child: Text('NOTIFY', style: TextStyle(color: Colors.white)),
-              onPressed: () async {
-                onRefreshTimer();
+            child: Text('NOTIFY', style: TextStyle(color: Colors.white)),
+            onPressed: () async {
+              onRefreshTimer();
+
                 characteristic.value.listen((value) {
                   widget.readValues[characteristic.uuid] = value;
+                  if (isSelected2[0] == true) {
+                    notifyValue.add(value);
+                  }
                 });
-                await characteristic.setNotifyValue(true);
-              },
-            ),
+
+              await characteristic.setNotifyValue(true);
+              setState(() {});
+            },
+          ),
           ),
         ),
       );
@@ -245,13 +255,6 @@ class _MyHomePageState extends State<MyHomePage> {
     for (BluetoothService service in _services) {
       List<Widget> characteristicsWidget = new List<Widget>();
       for (BluetoothCharacteristic characteristic in service.characteristics) {
-        characteristic.value.listen((value) {
-          print('value = $value');
-
-          notifyValue.add(value);
-          //print('length= ${notifyValue.length}');
-          //notifyValue.forEach((element) => print('notifyvalue = $element'));
-        });
         characteristicsWidget.add(
           Align(
             alignment: Alignment.centerLeft,
@@ -267,7 +270,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: <Widget>[
                     ..._buildReadWriteNotifyButton(characteristic),
                   ],
-
                 ),
                 Row(
                   children: <Widget>[
@@ -291,25 +293,80 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       );
     }
+
     return ListView(
       shrinkWrap: true,
       padding: const EdgeInsets.all(8),
       children: <Widget>[
+        StreamBuilder<BluetoothDeviceState>(
+          stream: latestDevice.state,
+          initialData: BluetoothDeviceState.connecting,
+          builder: (c, snapshot) => ListTile(
+            leading: (snapshot.data == BluetoothDeviceState.connected)
+                ? Icon(Icons.bluetooth_connected)
+                : Icon(Icons.bluetooth_disabled),
+            title: Text(
+                'Device is ${snapshot.data.toString().split('.')[1]}.'),
+            subtitle: Text('${latestDevice.id}'),
+            trailing: StreamBuilder<bool>(
+              stream: latestDevice.isDiscoveringServices,
+              initialData: false,
+              builder: (c, snapshot) => IndexedStack(
+                index: snapshot.data ? 1 : 0,
+                children: <Widget>[
+                  IconButton(
+                    icon: Icon(Icons.refresh),
+                    onPressed: () => latestDevice.discoverServices(),
+                  ),
+                  IconButton(
+                    icon: SizedBox(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation(Colors.grey),
+                      ),
+                      width: 18.0,
+                      height: 18.0,
+                    ),
+                    onPressed: null,
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+        StreamBuilder<BluetoothDeviceState>(
+        stream: latestDevice.state,
+        initialData: BluetoothDeviceState.connecting,
+        builder: (c, snapshot) {
+
+          if(snapshot.data==BluetoothDeviceState.disconnected){
+            latestDevice.connect();
+
+          }
+          return Text('');
+        }
+        ),
+        Divider(),
         ...containers,
        Container(
-         height: 300,
-//         child:  ListView.builder(
-//             itemBuilder: (BuildContext context, int index){
-//               return ListTile(title: Text(notifyValue.isEmpty ? '' : '($index) = ${notifyValue[index]}'));
-//             }
-//         ),
+         height: 150,
+         child:  ListView.builder(
+             itemCount: notifyValue.length,
+             itemBuilder: (BuildContext context, int index){
+               return ListTile(title: Text(notifyValue.isEmpty ? '' : '($index) = ${notifyValue[index]}'));
+             }
+         ),
        ),
        SizedBox(
-         height: 30
+         height: 10
        ),
-       new Container(
+      Container(
           child: Column(
             children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Text("Listlength = $notifylength"),
+                ],
+              ),
               Row(
                mainAxisAlignment: MainAxisAlignment.center,
                children: <Widget>[
@@ -325,15 +382,37 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: () async {
                   offRefreshTimer();
                   notifyValue.clear();
+                  _connectedDevice.disconnect();
                   setState(() {
-                    _connectedDevice.disconnect();
                     if(_connectedDevice!=null) {
                       _connectedDevice = null;
                     }
-
                   });
                 },
               ),
+                 SizedBox(
+                   width: 30,
+                 ),
+                 ToggleButtons(
+                   children: [
+                     Icon(Icons.play_arrow),
+                     Icon(Icons.stop),
+                   ],
+                   onPressed: (int index) {
+                     setState(() {
+                       for (int buttonIndex = 0; buttonIndex < isSelected2.length; buttonIndex++) {
+                         if (buttonIndex == index) {
+                           isSelected2[buttonIndex] = true;
+                         } else {
+                           isSelected2[buttonIndex] = false;
+                         }
+                       }
+                     });
+                     print(isSelected2[0]);
+                     print(isSelected2);
+                   },
+                   isSelected: isSelected2,
+                 ),
             ],
           ),
         ]),
@@ -350,12 +429,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
 
-
   @override
   Widget build(BuildContext context) {
-
-
-    return Scaffold(
+    notifylength=notifyValue.length;
+        return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         actions: <Widget>[
