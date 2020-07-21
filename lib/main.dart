@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
-
+import 'package:audioplayers/audio_cache.dart';
 
 void main()=>runApp(MyApp());
 
@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'BLE',
       theme: ThemeData(
-        primarySwatch: Colors.blue
+          primarySwatch: Colors.blue
       ),
       home: MyHomePage(title: 'BLE'),
     );
@@ -39,16 +39,19 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   BluetoothDevice _connectedDevice;
   BluetoothDevice latestDevice;
-  BluetoothDeviceState deviceState;
+  //BluetoothDeviceState deviceState;
   List<BluetoothService> _services;
   final _writeController = TextEditingController();
   List<dynamic> notifyValue = new List<dynamic>();
   int notifylength = 0;
   var isSelected2 = [false, true];
-
+  bool timerON;
+  AudioCache player = new AudioCache();
+  bool notify_flag;
   Timer refreshTimer;
 
   onRefreshTimer(){
+    timerON=true;
     refreshTimer = new Timer.periodic(Duration(milliseconds: 40), (timer) {
       setState(() {
       });
@@ -56,6 +59,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   offRefreshTimer(){
+    timerON=false;
     refreshTimer.cancel();
   }
 
@@ -68,14 +72,22 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     }
   }
+  //nosound mp3 재생
+  play() async{
+    const alarmAudioPath = "test.wav";
+    const noSound = "nosound.mp3";
+    player.loop(alarmAudioPath);
+    player.loop(noSound);
+  }
+
   @override
   void initState(){
     super.initState();
     widget.devicesList.clear();
     notifyValue.clear();
     widget.flutterBlue.connectedDevices
-    .asStream()
-    .listen((List<BluetoothDevice>devices){
+        .asStream()
+        .listen((List<BluetoothDevice>devices){
       for(BluetoothDevice device in devices){
         _addDeviceTolist(device);
       }
@@ -84,55 +96,60 @@ class _MyHomePageState extends State<MyHomePage> {
       for(ScanResult result in results){
         _addDeviceTolist(result.device);
         print('${result.device.name} found! rssi: ${result.rssi}');
-        print('${result.device.state}');
+
       }
     });
     widget.flutterBlue.startScan();
+    play();
   }
 
   ListView _buildListViewOfDevices(){
     List<Container> containers = new List<Container>();
+    setState(() {});
+
     for(BluetoothDevice device in widget.devicesList){
       containers.add(
-        Container(
-          height: 50,
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  children: <Widget>[
-                    Text(device.name == '' ? '(unkown device)' : device.name,
-                    style: TextStyle(fontWeight: FontWeight.bold),),
-                  Text(device.id.toString()),
-                  ],
+          Container(
+            height: 50,
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    children: <Widget>[
+                      Text(device.name == '' ? '(unkown device)' : device.name,
+                        style: TextStyle(fontWeight: FontWeight.bold),),
+                      Text(device.id.toString()),
+                    ],
+                  ),
                 ),
-              ),
-              FlatButton(
-                color: Colors.blue,
-                child: Text(
-                  'Connect',
-                  style: TextStyle(color: Colors.white),
-                ),
-                onPressed: () async {
-                  widget.flutterBlue.stopScan();
-                  try {
-                    await device.connect(autoConnect: false);
-                  } catch (e) {
-                    if (e.code != 'already_connected') {
-                      throw e;
+                FlatButton(
+                  color: Colors.blue,
+                  child: Text(
+                    'Connect',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onPressed: () async {
+                    onRefreshTimer();
+
+                    widget.flutterBlue.stopScan();
+                    try {
+                      await device.connect(autoConnect: false);
+                    } catch (e) {
+                      if (e.code != 'already_connected') {
+                        throw e;
+                      }
+                    } finally {
+                      _services = await device.discoverServices();
                     }
-                  } finally {
-                    _services = await device.discoverServices();
-                  }
-                  setState(() {
-                    _connectedDevice = device;
-                    latestDevice = device;
-                  });
-                },
-              )
-            ],
-          ),
-        )
+                    setState(() {
+                      _connectedDevice = device;
+                      latestDevice = device;
+                    });
+                  },
+                )
+              ],
+            ),
+          )
       );
     }
     return ListView(
@@ -227,10 +244,10 @@ class _MyHomePageState extends State<MyHomePage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: RaisedButton(
-            child: Text('NOTIFY', style: TextStyle(color: Colors.white)),
-            onPressed: () async {
-              onRefreshTimer();
-
+              child: Text('NOTIFY', style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                //onRefreshTimer();
+                notify_flag=true;
                 characteristic.value.listen((value) {
                   widget.readValues[characteristic.uuid] = value;
                   if (isSelected2[0] == true) {
@@ -238,10 +255,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   }
                 });
 
-              await characteristic.setNotifyValue(true);
-              setState(() {});
-            },
-          ),
+                await characteristic.setNotifyValue(true);
+                //setState(() {});
+              },
+            ),
           ),
         ),
       );
@@ -293,7 +310,6 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       );
     }
-
     return ListView(
       shrinkWrap: true,
       padding: const EdgeInsets.all(8),
@@ -301,7 +317,17 @@ class _MyHomePageState extends State<MyHomePage> {
         StreamBuilder<BluetoothDeviceState>(
           stream: latestDevice.state,
           initialData: BluetoothDeviceState.connecting,
-          builder: (c, snapshot) => ListTile(
+          builder: (c, snapshot) {
+           // deviceState = snapshot.data;
+            if(snapshot.data==BluetoothDeviceState.disconnected){
+              offRefreshTimer();
+              latestDevice.connect();
+            }
+//            if(snapshot.data==BluetoothDeviceState.connecting){
+//              //onRefreshTimer();
+//
+//            }
+            return ListTile(
             leading: (snapshot.data == BluetoothDeviceState.connected)
                 ? Icon(Icons.bluetooth_connected)
                 : Icon(Icons.bluetooth_disabled),
@@ -316,7 +342,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: <Widget>[
                   IconButton(
                     icon: Icon(Icons.refresh),
-                    onPressed: () => latestDevice.discoverServices(),
+                    onPressed: () async {
+                      await latestDevice.discoverServices();
+                      //print('deviceState = ${deviceState.toString().split('.')[1]}, latestDevice = ${latestDevice.name}');
+                      },
                   ),
                   IconButton(
                     icon: SizedBox(
@@ -331,92 +360,85 @@ class _MyHomePageState extends State<MyHomePage> {
                 ],
               ),
             ),
-          ),
-        ),
-        StreamBuilder<BluetoothDeviceState>(
-        stream: latestDevice.state,
-        initialData: BluetoothDeviceState.connecting,
-        builder: (c, snapshot) {
-
-          if(snapshot.data==BluetoothDeviceState.disconnected){
-            latestDevice.connect();
-
-          }
-          return Text('');
-        }
+          );
+         }
         ),
         Divider(),
         ...containers,
-       Container(
-         height: 150,
-         child:  ListView.builder(
-             itemCount: notifyValue.length,
-             itemBuilder: (BuildContext context, int index){
-               return ListTile(title: Text(notifyValue.isEmpty ? '' : '($index) = ${notifyValue[index]}'));
-             }
-         ),
-       ),
-       SizedBox(
-         height: 10
-       ),
-      Container(
-          child: Column(
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Text("Listlength = $notifylength"),
-                ],
-              ),
-              Row(
-               mainAxisAlignment: MainAxisAlignment.center,
-               children: <Widget>[
-              Text(_connectedDevice.name,
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(
-                width: 30,
-              ),
-              FlatButton(
-                child: Text("DisConnect",
-                  style:(TextStyle(color: Colors.white)),),
-                color: Colors.blue,
-                onPressed: () async {
-                  offRefreshTimer();
-                  notifyValue.clear();
-                  _connectedDevice.disconnect();
-                  setState(() {
-                    if(_connectedDevice!=null) {
-                      _connectedDevice = null;
-                    }
-                  });
-                },
-              ),
-                 SizedBox(
-                   width: 30,
-                 ),
-                 ToggleButtons(
-                   children: [
-                     Icon(Icons.play_arrow),
-                     Icon(Icons.stop),
-                   ],
-                   onPressed: (int index) {
-                     setState(() {
-                       for (int buttonIndex = 0; buttonIndex < isSelected2.length; buttonIndex++) {
-                         if (buttonIndex == index) {
-                           isSelected2[buttonIndex] = true;
-                         } else {
-                           isSelected2[buttonIndex] = false;
-                         }
-                       }
-                     });
-                     print(isSelected2[0]);
-                     print(isSelected2);
-                   },
-                   isSelected: isSelected2,
-                 ),
-            ],
+        Container(
+          height: 150,
+          child:  ListView.builder(
+              itemCount: notifyValue.length,
+              itemBuilder: (BuildContext context, int index){
+                return ListTile(title: Text(notifyValue.isEmpty ? '' : '($index) = ${notifyValue[index]}'));
+              }
           ),
-        ]),
-       ),
+        ),
+        SizedBox(
+            height: 10
+        ),
+        Container(
+          child: Column(
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text("Listlength = $notifylength"),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text(_connectedDevice.name,
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(
+                      width: 30,
+                    ),
+                    FlatButton(
+                      child: Text("DisConnect",
+                        style:(TextStyle(color: Colors.white)),),
+                      color: Colors.blue,
+                      onPressed: () async {
+                        offRefreshTimer();
+                        notify_flag=false;
+                        notifyValue.clear();
+                        _connectedDevice.disconnect();
+
+                        setState(() {
+                          if(_connectedDevice!=null) {
+                            _connectedDevice = null;
+                          }
+                          //deviceState=BluetoothDeviceState.disconnected;
+                          latestDevice=null;
+                        });
+                      },
+                    ),
+                    SizedBox(
+                      width: 30,
+                    ),
+                    ToggleButtons(
+                      children: [
+                        Icon(Icons.play_arrow),
+                        Icon(Icons.stop),
+                      ],
+                      onPressed: (int index) {
+                        setState(() {
+                          for (int buttonIndex = 0; buttonIndex < isSelected2.length; buttonIndex++) {
+                            if (buttonIndex == index) {
+                              isSelected2[buttonIndex] = true;
+                            } else {
+                              isSelected2[buttonIndex] = false;
+                            }
+                          }
+                        });
+                        print(isSelected2[0]);
+                        print(isSelected2);
+                      },
+                      isSelected: isSelected2,
+                    ),
+                  ],
+                ),
+              ]),
+        ),
       ],
     );
   }
@@ -432,34 +454,36 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     notifylength=notifyValue.length;
-        return Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         actions: <Widget>[
           IconButton(
             icon: Icon(Icons.bluetooth_searching),
             onPressed: (){
-              notifyValue.clear();
               widget.flutterBlue.stopScan();
-              if (_connectedDevice == null) {
-                setState(() {
-                  widget.devicesList.clear();
-                  widget.flutterBlue.connectedDevices
-                      .asStream()
-                      .listen((List<BluetoothDevice>devices){
-                    for(BluetoothDevice device in devices){
-                      _addDeviceTolist(device);
-                    }
-                  });
-                  widget.flutterBlue.scanResults.listen((List<ScanResult> results){
-                    for(ScanResult result in results){
-                      _addDeviceTolist(result.device);
-                      print('connectedDevice :  $_connectedDevice');
-                    }
-                  });
-                  widget.flutterBlue.startScan();
-                });
-              }
+              notifyValue.clear();
+              widget.devicesList.clear();
+              FlutterBlue.instance.startScan();
+//              if (_connectedDevice == null) {
+//                setState(() {
+//                  widget.devicesList.clear();
+//                  widget.flutterBlue.connectedDevices
+//                      .asStream()
+//                      .listen((List<BluetoothDevice>devices){
+//                    for(BluetoothDevice device in devices){
+//                      _addDeviceTolist(device);
+//                    }
+//                  });
+//                  widget.flutterBlue.scanResults.listen((List<ScanResult> results){
+//                    for(ScanResult result in results){
+//                      _addDeviceTolist(result.device);
+//                      print('connectedDevice :  $_connectedDevice');
+//                    }
+//                  });
+//                  widget.flutterBlue.startScan();
+//                });
+//              }
             },
           )
         ],
@@ -468,4 +492,3 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
-
