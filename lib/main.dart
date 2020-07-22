@@ -49,6 +49,7 @@ class _MyHomePageState extends State<MyHomePage> {
   AudioCache player = new AudioCache();
   bool notify_flag;
   Timer refreshTimer;
+  final Stream<int> stream = Stream.periodic(Duration(seconds: 1), (int x) => x); // 1초에 한번씩 업데이트
 
   onRefreshTimer(){
     timerON=true;
@@ -243,6 +244,26 @@ class _MyHomePageState extends State<MyHomePage> {
           height: 20,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
+//            child: StreamBuilder<int>(
+//              stream: stream,
+//              builder: (BuildContext context, AsyncSnapshot<int> snapshot){
+//                return RaisedButton(
+//                  child: Text('NOTIFY', style: TextStyle(color: Colors.white)),
+//                  onPressed: () async {
+//                    //onRefreshTimer();
+//                    notify_flag=true;
+//                    characteristic.value.listen((value) {
+//                      widget.readValues[characteristic.uuid] = value;
+//                      if (isSelected2[0] == true) {
+//                        notifyValue.add(value);
+//                      }
+//                    });
+//                    await characteristic.setNotifyValue(true);
+//                    //setState(() {});
+//                  },
+//                );
+//              }
+//            ),
             child: RaisedButton(
               child: Text('NOTIFY', style: TextStyle(color: Colors.white)),
               onPressed: () async {
@@ -254,7 +275,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     notifyValue.add(value);
                   }
                 });
-
                 await characteristic.setNotifyValue(true);
                 //setState(() {});
               },
@@ -320,7 +340,7 @@ class _MyHomePageState extends State<MyHomePage> {
           builder: (c, snapshot) {
            // deviceState = snapshot.data;
             if(snapshot.data==BluetoothDeviceState.disconnected){
-              offRefreshTimer();
+              //offRefreshTimer();
               latestDevice.connect();
             }
 //            if(snapshot.data==BluetoothDeviceState.connecting){
@@ -465,25 +485,7 @@ class _MyHomePageState extends State<MyHomePage> {
               notifyValue.clear();
               widget.devicesList.clear();
               FlutterBlue.instance.startScan();
-//              if (_connectedDevice == null) {
-//                setState(() {
-//                  widget.devicesList.clear();
-//                  widget.flutterBlue.connectedDevices
-//                      .asStream()
-//                      .listen((List<BluetoothDevice>devices){
-//                    for(BluetoothDevice device in devices){
-//                      _addDeviceTolist(device);
-//                    }
-//                  });
-//                  widget.flutterBlue.scanResults.listen((List<ScanResult> results){
-//                    for(ScanResult result in results){
-//                      _addDeviceTolist(result.device);
-//                      print('connectedDevice :  $_connectedDevice');
-//                    }
-//                  });
-//                  widget.flutterBlue.startScan();
-//                });
-//              }
+//
             },
           )
         ],
